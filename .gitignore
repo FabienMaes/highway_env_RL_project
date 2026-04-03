@@ -1,0 +1,6 @@
+__pycache__/
+
+*.pth
+*.zip
+
+figures/
