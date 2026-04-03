@@ -98,7 +98,7 @@ class HighwayDQN:
     def get_q(self, state: np.ndarray) -> np.ndarray:
         state_tensor = torch.tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
         with torch.no_grad():
-            output = self.q_net.forward(state_tensor)
+            output = self.q_net(state_tensor)
         return output.cpu().numpy()[0]
 
     def decrease_epsilon(self):
@@ -131,10 +131,10 @@ class HighwayDQN:
             [torch.cat(data).to(self.device) for data in zip(*transitions)]
         )
 
-        values = self.q_net.forward(states).gather(1, actions)
+        values = self.q_net(states).gather(1, actions)
 
         with torch.no_grad():
-            targets = rewards + self.gamma * self.target_net.forward(next_states).max(1)[0] * (1 - terminateds)
+            targets = rewards + self.gamma * self.target_net(next_states).max(1)[0] * (1 - terminateds)
 
         loss = self.loss_function(values, targets.unsqueeze(1))
 
@@ -158,3 +158,4 @@ class HighwayDQN:
         """Loads the Q-network's weights from a file."""
         self.q_net.load_state_dict(torch.load(filepath, map_location=self.device))
         self.target_net.load_state_dict(self.q_net.state_dict())
+
