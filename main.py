@@ -113,23 +113,23 @@ if __name__ == "__main__":
         learning_rate
     )
 
-    # N_episodes = 200
-    # losses = train(env, agent, N_episodes, eval_every=10)
+    N_episodes = 200
+    losses = train(env, agent, N_episodes, eval_every=10)
 
-    # save_path = "models/custom_dqn_highway.pth"
-    # print(f"Saving the custom model to {save_path}...")
-    # agent.save(save_path)
+    save_path = "models/custom_dqn_highway.pth"
+    print(f"Saving the custom model to {save_path}...")
+    agent.save(save_path)
 
     agent.load("models/custom_dqn_highway.pth")
     final_rewards = eval_agent(env, agent, n_sim=50)
     print(f"Final Evaluation Results: Mean reward: {np.mean(final_rewards):.2f} +/- {np.std(final_rewards):.2f}")
 
-    # plt.figure(figsize=(10, 5))
-    # plt.plot(losses)
-    # plt.title("DQN Training Loss")
-    # plt.xlabel("Update Steps")
-    # plt.ylabel("Loss (MSE)")
-    # plt.savefig("figures/dqn_loss_plot.png")
-    # plt.show()
+    plt.figure(figsize=(10, 5))
+    plt.plot(losses)
+    plt.title("DQN Training Loss")
+    plt.xlabel("Update Steps")
+    plt.ylabel("Loss (MSE)")
+    plt.savefig("figures/dqn_loss_plot.png")
+    plt.show()
 
     visualize_episode(agent)
