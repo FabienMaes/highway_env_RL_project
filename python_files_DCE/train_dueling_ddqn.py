@@ -85,6 +85,7 @@ def make_env(render_mode=None):
     """
     env = gym.make(SHARED_CORE_ENV_ID, render_mode=render_mode)
     env.unwrapped.configure(SHARED_CORE_CONFIG)
+    env.reset()
     env = Monitor(env)
     return env
 
@@ -142,7 +143,7 @@ class DuelingNet(nn.Module):
     """
     def __init__(self, obs_shape, hidden_size, n_actions):
         super().__init__()
-        flattened_size = obs_shape[0] * obs_shape[1]
+        flattened_size = int(np.prod(obs_shape))
 
         # Shared feature extraction — same as the first layer of the standard Net
         self.feature_layer = nn.Sequential(
