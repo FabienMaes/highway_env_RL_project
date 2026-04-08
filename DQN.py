@@ -15,7 +15,7 @@ class ReplayBuffer:
         self.memory = []
         self.position = 0
 
-    def push(self, state: Tensor, action: Tensor, reward: Tensor, terminated: Tensor, next_state: Tensor):
+    def push(self, state: np.ndarray, action: int, reward: float, terminated: bool, next_state: np.ndarray) -> None:
         if len(self.memory) < self.capacity:
             self.memory.append(None)
         self.memory[self.position] = (state, action, reward, terminated, next_state)
@@ -115,26 +115,24 @@ class HighwayDQN:
         return int(np.argmax(self.get_q(state)))
 
     def update(self, state: np.ndarray, action: int, reward: float, terminated: bool, next_state: np.ndarray) -> float:
-        self.buffer.push(torch.tensor(state, dtype=torch.float32).unsqueeze(0),
-                         torch.tensor([[action]], dtype=torch.int64),
-                         torch.tensor([reward], dtype=torch.float32),
-                         torch.tensor([terminated], dtype=torch.float32),
-                         torch.tensor(next_state, dtype=torch.float32).unsqueeze(0))
-
+        self.buffer.push(state, action, reward, terminated, next_state)
         if len(self.buffer) < self.batch_size:
             self.n_steps += 1
             return np.inf
 
         transitions = self.buffer.sample(self.batch_size)
+        states, actions, rewards, terminateds, next_states = zip(*transitions)
 
-        states, actions, rewards, terminateds, next_states = tuple(
-            [torch.cat(data).to(self.device) for data in zip(*transitions)]
-        )
+        states_t = torch.as_tensor(np.array(states), dtype=torch.float32, device=self.device)
+        actions_t = torch.as_tensor(actions, dtype=torch.int64, device=self.device).unsqueeze(1)
+        rewards_t = torch.as_tensor(rewards, dtype=torch.float32, device=self.device)
+        terminateds_t = torch.as_tensor(terminateds, dtype=torch.float32, device=self.device)
+        next_states_t = torch.as_tensor(np.array(next_states), dtype=torch.float32, device=self.device)
 
-        values = self.q_net(states).gather(1, actions)
+        values = self.q_net(states_t).gather(1, actions_t)
 
         with torch.no_grad():
-            targets = rewards + self.gamma * self.target_net(next_states).max(1)[0] * (1 - terminateds)
+            targets = rewards_t + self.gamma * self.target_net.forward(next_states_t).max(1)[0] * (1 - terminateds_t)
 
         loss = self.loss_function(values, targets.unsqueeze(1))
 

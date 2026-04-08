@@ -1,3 +1,4 @@
+import csv
 import random
 
 import torch
@@ -5,15 +6,15 @@ import highway_env
 import numpy as np
 import gymnasium as gym
 
-
 from shared_core_config import SHARED_CORE_CONFIG, SHARED_CORE_ENV_ID
+
 from DQN import HighwayDQN
 from utils import eval_agent, train, visualize_episode, plot_training_curves
 
 
 if __name__ == "__main__":
     train_seeds = [42, 123, 456]
-    test_seeds = [3, 33, 333]
+    test_seeds = [3, 33, 333, 3333, 33333]
     summary_results = []
     agent = None
 
@@ -27,7 +28,6 @@ if __name__ == "__main__":
         random.seed(train_seed)
 
         env = gym.make(SHARED_CORE_ENV_ID, config=SHARED_CORE_CONFIG, render_mode='rgb_array')
-
         env.reset(seed=train_seed)
 
         action_space = env.action_space
@@ -75,16 +75,26 @@ if __name__ == "__main__":
 
         env.close()
 
-    print(f"\n{'='*65}")
+
+    print(f"\n{'='*55}")
     print("FINAL EVALUATION TABLE (Across Training and Test Seeds)")
-    print(f"{'='*65}")
-    print(f"{'Train Seed':<12} | {'Eval Seed':<15} | {'Mean Reward':<15} | {'Std Dev':<10}")
-    print("-" * 65)
+    print(f"{'='*55}")
+    print(f"{'Train Seed':<12} | {'Eval Seed':<15} | {'Reward':<15}")
+    print("-" * 55)
     for train_s, eval_s, mean_r, std_r in summary_results:
-        # Add a marker to clearly denote whether the agent had seen this seed before
         marker = "(Train)" if train_s == eval_s else "(Test)"
         eval_str = f"{eval_s} {marker}"
-        print(f"{train_s:<12} | {eval_str:<15} | {mean_r:<15.2f} | {std_r:<10.2f}")
+        reward_str = f"{mean_r:.2f} +/- {std_r:.2f}"
+        print(f"{train_s:<12} | {eval_str:<15} | {reward_str:<15}")
+
+    csv_path = "evaluation_results.csv"
+    print(f"\nSaving numerical results to {csv_path}...")
+    with open(csv_path, mode='w', newline='') as csv_file:
+        writer = csv.writer(csv_file)
+        writer.writerow(["Train Seed", "Eval Seed", "Evaluation Type", "Mean Reward", "Std Dev"])
+        for train_s, eval_s, mean_r, std_r in summary_results:
+            eval_type = "Train" if train_s == eval_s else "Test"
+            writer.writerow([train_s, eval_s, eval_type, round(mean_r, 2), round(std_r, 2)])
 
     if agent is not None:
         visualize_episode(agent)
