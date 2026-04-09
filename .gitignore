@@ -1,0 +1,10 @@
+logs/*
+!logs/.gitkeep
+logs1/
+checkpoints/*
+!checkpoints/.gitkeep
+checkpoints1/
+rlogs/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/

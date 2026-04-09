@@ -21,6 +21,7 @@ import csv
 import random
 import gymnasium as gym
 import highway_env
+import json
 import numpy as np
 import pandas as pd
 import torch
@@ -29,9 +30,10 @@ import torch.optim as optim
 import matplotlib.pyplot as plt
 import imageio
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from tqdm import tqdm
 from stable_baselines3 import DQN as SB3_DQN
+from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.monitor import Monitor
 from IPython.display import Image
@@ -90,15 +92,18 @@ class CFG:
 
     # --- SB3 baseline ---
     sb3_total_steps: int = 100_000
-    sb3_log_path: str = "logs/sb3"
+
+    # --- DDQN ---
+    use_ddqn: bool = False
 
     # --- derived paths (set automatically in __post_init__) ---
     train_log_path: str = field(init=False)
     ep_log_path: str = field(init=False)
 
     def __post_init__(self):
-        self.train_log_path = f"logs/dqn_training_s{self.seed}.csv"
-        self.ep_log_path    = f"logs/dqn_episodes_s{self.seed}.csv"
+        algo = "ddqn" if self.use_ddqn else "dqn"
+        self.train_log_path = f"logs/{algo}_training_s{self.seed}.csv"
+        self.ep_log_path    = f"logs/{algo}_episodes_s{self.seed}.csv"
         os.makedirs(self.checkpoint_dir, exist_ok=True)
         os.makedirs("logs", exist_ok=True)
 
@@ -213,7 +218,11 @@ def train_step(q_net, target_net, optimizer, buffer, cfg, device):
 
     # Target: r + gamma * max_a' Q_target(s', a')  [zero if done]
     with torch.no_grad():
-        next_q = target_net(next_states_t).max(dim=1).values
+        if cfg.use_ddqn:
+            next_actions = q_net(next_states_t).argmax(dim=1, keepdim=True)
+            next_q = target_net(next_states_t).gather(1, next_actions).squeeze(1)
+        else:
+            next_q = target_net(next_states_t).max(dim=1).values
         targets = rewards_t + cfg.gamma * next_q * (1 - dones_t)
 
     loss = nn.functional.mse_loss(q_values, targets)
@@ -232,13 +241,11 @@ def train_dqn(cfg: CFG, device=None):
     Full DQN training loop.
     Returns the trained q_net and the path to the training log CSV.
     """
-
-    # def make_env(render_mode="rgb_array"):
-    #     env = gym.make("highway-v0", render_mode=render_mode)
-    #     env.unwrapped.configure(SHARED_CORE_CONFIG)
-    #     env.reset()
-    #     env = Monitor(env) 
-    #     return env
+    # save config
+    algo = "ddqn" if cfg.use_ddqn else "dqn"
+    config_path = f"logs/{algo}_config_s{cfg.seed}.json"
+    with open(config_path, "w") as f:
+        json.dump(asdict(cfg), f, indent=2)
 
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -341,7 +348,7 @@ def train_dqn(cfg: CFG, device=None):
 
         # Checkpoint
         if step % (cfg.total_steps // 5) == 0 and step > 0:
-            path = os.path.join(cfg.checkpoint_dir, f"dqn_step{step}.pt")
+            path = os.path.join(cfg.checkpoint_dir, f"{algo}_step{step}_s{cfg.seed}.pt")
             torch.save(q_net.state_dict(), path)
 
     logger.close()
@@ -349,7 +356,8 @@ def train_dqn(cfg: CFG, device=None):
     env.close()
 
     # Save final model
-    final_path = os.path.join(cfg.checkpoint_dir, "dqn_final.pt")
+    
+    final_path = os.path.join(cfg.checkpoint_dir, f"{algo}_final_s{cfg.seed}.pt")
     torch.save(q_net.state_dict(), final_path)
     print(f"\nFinal model saved to {final_path}")
 
@@ -453,18 +461,53 @@ def record_rollout(q_net, cfg: CFG, device, path: str = "rollout.gif", seed=None
 # =============================================================================
 # STABLE-BASELINES3 BASELINE
 # =============================================================================
+class LogCallback(BaseCallback):
+        def __init__(self, log_freq=5000):
+            super().__init__()
+            self.log_freq = log_freq
+
+        def _on_step(self):
+            if self.num_timesteps % self.log_freq == 0:
+                print(f"SB3 step {self.num_timesteps}", flush=True)
+            return True
+
+class CSVLogCallback(BaseCallback):
+    def __init__(self, log_path, log_freq=500):
+        super().__init__()
+        self.logger_csv = MetricsLogger(log_path)
+        self.log_freq = log_freq
+
+    def _on_step(self):
+        if self.num_timesteps % self.log_freq == 0:
+            # SB3 stores rollout stats in self.model.ep_info_buffer
+            if len(self.model.ep_info_buffer) > 0:
+                mean_r = np.mean([ep["r"] for ep in self.model.ep_info_buffer])
+                mean_l = np.mean([ep["l"] for ep in self.model.ep_info_buffer])
+                self.logger_csv.log(
+                    step=self.num_timesteps,
+                    mean_reward=round(mean_r, 3),
+                    mean_length=round(mean_l, 1),
+                    exploration_rate=round(self.model.exploration_rate, 4),
+                )
+            print(f"SB3 step {self.num_timesteps}", flush=True)
+        return True
+
+    def on_training_end(self):
+        self.logger_csv.close()
 
 def train_sb3(cfg: CFG):
     """
     Train a DQN via Stable-Baselines3 on the same benchmark.
     Returns the trained model and evaluation results.
     """
+
+
     env = make_env()
 
     model = SB3_DQN(
         "MlpPolicy",
         env,
-        verbose=0,
+        verbose=1,
         learning_rate=cfg.lr,
         buffer_size=cfg.buffer_size,
         batch_size=cfg.batch_size,
@@ -472,40 +515,52 @@ def train_sb3(cfg: CFG):
         exploration_fraction=cfg.eps_decay_steps / cfg.sb3_total_steps,
         exploration_final_eps=cfg.eps_end,
         target_update_interval=cfg.target_update_freq,
-        tensorboard_log=cfg.sb3_log_path,
+        learning_starts=cfg.warmup_steps,
         seed=cfg.seed,
     )
 
-    print("Training SB3 DQN...")
-    model.learn(total_timesteps=cfg.sb3_total_steps, progress_bar=True)
+    print("Training SB3 DQN...", flush=True)
+    model.learn(
+        total_timesteps=cfg.sb3_total_steps,
+        callback=CSVLogCallback(log_path="logs/sb3_training.csv")
+    )
     model.save(os.path.join(cfg.checkpoint_dir, "sb3_dqn_final"))
+    env.close()
 
-    # Evaluate (same seeds as the custom DQN for fair comparison)
+    # Evaluate using same seeds as custom DQN
     eval_env = make_env()
     eval_seeds = [cfg.seed + i for i in range(cfg.final_eval_episodes)]
     rewards = []
+    lengths = []
+    crashes = []
+
     for seed in eval_seeds:
         obs, _ = eval_env.reset(seed=seed)
         total_reward = 0.0
+        ep_length = 0
         done = False
         while not done:
             action, _ = model.predict(obs, deterministic=True)
             obs, reward, terminated, truncated, _ = eval_env.step(action)
             total_reward += reward
+            ep_length += 1
             done = terminated or truncated
         rewards.append(total_reward)
+        lengths.append(ep_length)
+        crashes.append(int(terminated))
+
     eval_env.close()
 
     mean_r, std_r = float(np.mean(rewards)), float(np.std(rewards))
     print(f"SB3 Eval ({cfg.final_eval_episodes} eps): mean={mean_r:.3f} ± {std_r:.3f}")
 
-    # Save SB3 eval results to CSV
+    # Save results
     os.makedirs("logs", exist_ok=True)
     with open("logs/sb3_eval.csv", "w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["episode", "reward"])
-        for i, r in enumerate(rewards):
-            w.writerow([i, r])
+        w.writerow(["episode", "seed", "reward", "length", "crashed"])
+        for i, (s, r, l, c) in enumerate(zip(eval_seeds, rewards, lengths, crashes)):
+            w.writerow([i, s, r, l, c])
 
     return model, mean_r, std_r
 

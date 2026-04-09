@@ -1,3 +1,4 @@
+"""Train the dqn and the baseline."""
 import os
 import argparse
 import torch
@@ -25,8 +26,6 @@ mean_r, std_r = evaluate(
     seeds=eval_seeds,
     log_path=f"logs/dqn_final_eval_s{cfg.seed}.csv"
 )
-print(f"Final eval — mean={mean_r:.3f} ± {std_r:.3f}")
+print(f"DQN Final eval — mean={mean_r:.3f} ± {std_r:.3f}")
 
-# SB3 only runs for seed 0 to avoid redundant training
-if args.seed == 0:
-    train_sb3(cfg)
+train_sb3(cfg)
