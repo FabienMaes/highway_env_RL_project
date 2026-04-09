@@ -48,8 +48,7 @@ class Net(nn.Module):
 
 class HighwayDQN:
     def __init__(self,
-                 action_space: gym.spaces.Discrete,
-                 observation_space: gym.spaces.Box,
+                 env: gym.Env,
                  gamma: float,
                  batch_size: int,
                  buffer_capacity: int,
@@ -57,10 +56,12 @@ class HighwayDQN:
                  epsilon_start: float,
                  decrease_epsilon_factor: float,
                  epsilon_min: float,
-                 learning_rate: float):
+                 learning_rate: float,
+                 model_type: str = "DDQN"):
 
-        self.action_space = action_space
-        self.observation_space = observation_space
+        self.env = env
+        self.action_space = env.action_space
+        self.observation_space = env.observation_space
         self.gamma = gamma
 
         self.batch_size = batch_size
@@ -73,6 +74,7 @@ class HighwayDQN:
 
         self.learning_rate = learning_rate
         self.device = torch.device("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
+        self.model_type = model_type 
         print(f"Initializing DQN on device: {self.device}")
 
         self.reset()
@@ -130,9 +132,13 @@ class HighwayDQN:
         next_states_t = torch.as_tensor(np.array(next_states), dtype=torch.float32, device=self.device)
 
         values = self.q_net(states_t).gather(1, actions_t)
-
         with torch.no_grad():
-            targets = rewards_t + self.gamma * self.target_net.forward(next_states_t).max(1)[0] * (1 - terminateds_t)
+            if self.model_type == "DDQN":
+                next_state_actions = self.q_net.forward(next_states_t).argmax(dim=1).unsqueeze(1)
+                next_q_values = self.target_net.forward(next_states_t).gather(1, next_state_actions).squeeze(1)
+            else:
+                next_q_values = self.target_net.forward(next_states_t).max(1)[0]
+            targets = rewards_t + self.gamma * next_q_values * (1 - terminateds_t)
 
         loss = self.loss_function(values, targets.unsqueeze(1))
 
