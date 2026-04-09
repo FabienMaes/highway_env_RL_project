@@ -9,6 +9,10 @@ import highway_env
 import gymnasium as gym
 from stable_baselines3.common.monitor import Monitor
 
+import json
+from datetime import datetime
+
+
 def make_env(render_mode=None):
     env = gym.make(SHARED_CORE_ENV_ID, render_mode=render_mode)
     env.unwrapped.configure(SHARED_CORE_CONFIG)
@@ -69,7 +73,7 @@ def warmup_buffer(agent, env, n_steps=1000):
     
     print(f"Buffer warmed up with {len(agent.buffer)} transitions.")
     
-def train_agent(agent, env, n_episodes=500):
+def train_agent(agent, env, n_episodes=500, prefix='agent'):
     episode_rewards = []
     episode_losses = []
     episode_lengths = []
@@ -103,14 +107,14 @@ def train_agent(agent, env, n_episodes=500):
             print(f"Ep {episode} | Reward {total_reward:.1f} | Eps {agent.epsilon:.3f}")
         
         if episode % 100 == 0:
-            agent.save(f"models/scratch_dqn_highway_ep{episode}.pt")
+            agent.save(f"models/{prefix}_ep{episode}.pt")
     
     return agent, episode_rewards, episode_losses, episode_lengths, epsilon_history
 
 def evaluate_agent_sb3(agent, env, seed, n_episodes=50):
     rewards = []
     for episode in range(n_episodes):
-        state, _ = env.reset(seed=seed)
+        state, _ = env.reset(seed=seed + episode)
         done = False
         total_reward = 0
         while not done:
@@ -124,7 +128,7 @@ def evaluate_agent_sb3(agent, env, seed, n_episodes=50):
 def evaluate_agent_scratch(agent, env, seed, n_episodes=50):
     rewards = []
     for episode in range(n_episodes):
-        state, _ = env.reset(seed=seed)
+        state, _ = env.reset(seed=seed + episode)
         done = False
         total_reward = 0
         while not done:
@@ -205,3 +209,20 @@ class PrioritizedReplayBuffer:
 
     def __len__(self):
         return len(self.memory)
+    
+def save_results(results, agent_name, path="./models"):
+    """Save evaluation results to a JSON file."""
+    output = {
+        "agent": agent_name,
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "mean_of_means": results["mean_of_means"],
+        "std_of_means": results["std_of_means"],
+        "per_seed": [
+            {"mean": float(m), "std": float(s)}
+            for m, s in zip(results["means"], results["stds"])
+        ]
+    }
+    filepath = f"{path}/eval_{agent_name}.json"
+    with open(filepath, "w") as f:
+        json.dump(output, f, indent=4)
+    print(f"Results saved to {filepath}")

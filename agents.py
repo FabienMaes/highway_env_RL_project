@@ -13,7 +13,7 @@ class DQNAgent:
         buffer_capacity = 15000,
         update_target_every = 50,
         epsilon_start = 1,
-        decrease_epsilon_factor = 1000,
+        decrease_epsilon_factor = 3000,
         epsilon_min = 0.01,
         learning_rate = 1e-3,
         device = "cpu",
@@ -146,7 +146,7 @@ class PERDQNAgent(DQNAgent):
         observation_space,
         alpha=0.6,       # degré de prioritisation
         beta_start=0.4,  # IS correction initiale
-        beta_frames=50000, # frames pour atteindre beta=1.0
+        beta_frames=24000, # frames pour atteindre beta=1.0
         **kwargs
     ):
         super().__init__(action_space, observation_space, **kwargs)
