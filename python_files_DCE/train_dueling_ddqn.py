@@ -59,9 +59,9 @@ from shared_core_config import SHARED_CORE_ENV_ID, SHARED_CORE_CONFIG
 # Configuration — edit these to change the run
 # =============================================================================
 
-N_EPISODES              = 2000
-DECREASE_EPSILON_FACTOR = 8000   # scales with N_EPISODES
-EVAL_SEEDS              = [3, 333, 3333, 33333, 333333]
+N_EPISODES              = 500
+DECREASE_EPSILON_FACTOR = 2000   # scales with N_EPISODES
+EVAL_SEEDS              = [3, 333, 3333]
 EVAL_EPISODES_PER_SEED  = 50
 ROLLOUT_SEED            = 3
 
