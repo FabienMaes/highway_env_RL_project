@@ -81,11 +81,11 @@ if __name__ == "__main__":
         else:
             gamma = 0.99
             batch_size = 32
-            buffer_capacity = 15000
+            buffer_capacity = 15_000
             update_target_every = 200
 
             epsilon_start = 1.0
-            decrease_epsilon_factor = 10000
+            decrease_epsilon_factor = 10_000
             epsilon_min = 0.05
             learning_rate = 5e-4
 

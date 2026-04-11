@@ -172,5 +172,5 @@ def plot_training_curves(episode_rewards: list[float], episode_losses: list[floa
     axes[1].set_ylabel("MSE loss")
 
     plt.tight_layout()
-    plt.savefig(f"{model_type.lower()}_training_curves_seed_{seed}.png")
+    plt.savefig(f"figures/{model_type.lower()}_training_curves_seed_{seed}.png")
     plt.close()
